@@ -1,0 +1,519 @@
+---
+title: "Projet GLM"
+author: "Dieynaba Dieng"
+date: "2023-06-18"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+Data<-read.csv("meteo.train.csv", header = TRUE,dec =".")
+View(Data) 
+```
+
+
+```{r}
+library("corrplot")
+library(caret)
+library(tidyr)
+library(summarytools)
+library(ggplot2)
+library(nnet)
+```
+
+
+
+Présentation des données
+Nous avons 47 variables et 1180 observations.
+```{r}
+str(Data)
+dim(Data)
+#notre base de données comporte 47 variables avec 1180 observations.
+```
+
+
+```{r}
+summary(Data)
+```
+
+Exploration détaillée des données
+```{r}
+print(dfSummary(Data, valid.col = FALSE, graph.magnif = 0.75), 
+      max.tbl.height = 300, method = "render")
+# on voit la base de données qui est constituée des différentes variables constituant les conditions meteorologiques et caractérisant les pluies. On trouve la base de données n'a pas de données manquantes.
+```
+
+
+On retrouve une certaine colinearité entre les variables. Ce qui confirme qu'i ya une colineraité entre eux.
+
+Hour et minute sont distribués de la même façon
+
+Low.Cloud.Cover.daily.min..low.cld.lay., Medium.Cloud.Cover.daily.min..mid.cld.lay., 	High.Cloud.Cover.daily.min..high.cld.lay, Total.Cloud.Cover.daily.min..sfc sont distribués de la même façon
+
+Wind.Speed.daily.min..900.mb., 	Wind.Gust.daily.min..sfc., Wind.Speed.daily.min..80.m.above.gnd., Wind.Speed.daily.min..10.m.above.gnd. semblent être distribués de la même manière.
+
+Vérification des 2 modalités de la variable à prédire
+```{r}
+table(Data$pluie.demain)
+# Nous avons 601 TRUE et 579 FALSE
+```
+
+la correlation
+```{r}
+corrplot(cor(cbind(Data[, 1:4], Data$pluie.demain == "TRUE")))
+#l'année est très fortement corrélée avec X
+corrplot(cor(cbind(Data[, 5:6], Data$pluie.demain == "TRUE")))
+corrplot(cor(cbind(Data[, 7:15], Data$pluie.demain == "TRUE")))
+#Low.Cloud.Cover.daily.mean..low.cld.lay. est corrélée Total.Cloud.Cover.daily.mean..sfc. La variable Medium.Cloud.Cover.daily.mean..mid.cld.lay. est aussi très corrélée avec Total.Cloud.Cover.daily.mean..sfc
+corrplot(cor(cbind(Data[, 16:25], Data$pluie.demain == "TRUE")))
+#Shortwave.Radiation.daily.sum..sfc., corrélée avec Sunshine.Duration.daily.sum..sfc.
+#Wind.Speed.daily.mean..10.m.above.gnd., corrélée avec Wind.Speed.daily.mean..80.m.above.gnd. et Wind.Gust.daily.mean..sfc.
+#Wind.Speed.daily.mean..80.m.above.gnd. est corrélée avec Wind.Gust.daily.mean..sfc.
+#Wind.Direction.daily.mean..80.m.above.gnd. est corrélée  avec Wind.Direction.daily.mean..10.m.above.gnd.
+# Wind.speed.daily.mean..900.mb. avec Wind.Gust.daily.mean..sfc.
+corrplot(cor(cbind(Data[, 26:35], Data$pluie.demain == "TRUE")))
+#Mean.Sea.Level.Pressure.daily.max..MSL. est très fortement corrélée avec Mean.Sea.Level.Pressure.daily.min..MSL.
+corrplot(cor(cbind(Data[, 36:46], Data$pluie.demain == "TRUE")))
+#Wind.Speed.daily.max..10.m.above.gnd. est corrélée avec les variables, Wind.Speed.daily.min..10.m.above.gnd., Wind.Speed.daily.max..900.mb., Wind.Speed.daily.max..80.m.above.gnd., Wind.Speed.daily.min..80.m.above.gnd., Wind.Speed.daily.min..900.mb., Wind.Gust.daily.max..sfc., Wind.Gust.daily.min..sfc. 
+
+#correlation positive
+
+# Ces variables sont corrélés positivement entre eux. une augmentation de l'un entre également une agmentation de l'autre et dans le même sens. on une multicolinearité entre les variables indépendantes; ce qui posera problème sur la regression. On voit dans certains cas que la corrélation entre les variables indépendantes et la variable cible est faible ou nulle. Ce qui peut conduire au modèle de régression à avoir du mal à capturer une relation significative entre ces variables. D'où certaines performances de prédiction médiocres.
+
+#Pour une meilleure construction du modèle il serait necessaire de faire une selection entre les variables. Ce qui permettrait de supprimer cetaines qui sont fortement corrrélées au risque de ne pas biaiser la regression
+
+
+# La variable à prédire est une variable ("pluie.demain") catégorielle donc la regression lineaire ne peut être appliquer. Cette dernière ne s'applique que la variable est continue.
+```
+
+
+
+**Modèle complet**
+```{r}
+reg<-glm(pluie.demain ~., data=Data, family=binomial(link="logit"))
+summary(reg)
+# il ya un effet significative des variables avec des étoiles. on interprete avec l'estimate:
+#l'apparition des NA dans la regression.soit la matrice est de plein de rang, reflète une forte correlation lineaire entre ces variables ( et d'autres).
+
+#En faisant une regression avec toutes les variables, on retrouve les variables suivantes comme des variables(significatives) ayant une influence sur la variable à expliquer qui est la variable pluie de demain: Mean.Sea.Level.Pressure.daily.mean..MSL., Wind.Direction.daily.mean..900.mb., Mean.Sea.Level.Pressure.daily.max..MSL., Mean.Sea.Level.Pressure.daily.min..MSL., Wind.Speed.daily.min..10.m.above.gnd., Medium.Cloud.Cover.daily.max..mid.cld.lay.
+
+#D'autres n'étant pas significatives. On aperçoit des NA au niveau des variables Hour et Minute. Dans la suite, nous  allons faire la regression en excluant ces deux variables.
+```
+
+ On fait la regression en enlevant les variables Hour et Minute
+```{r}
+reg1= glm(pluie.demain ~ . -Hour -Minute, data = Data, family = binomial)
+summary(reg1)
+# On retrouve les mêmes variables significatives que dans la regression précédente. 
+```
+
+
+Régression avec les variables significatives
+```{r}
+reg2<-glm(pluie.demain ~ Mean.Sea.Level.Pressure.daily.mean..MSL.+ Wind.Direction.daily.mean..900.mb. +Mean.Sea.Level.Pressure.daily.max..MSL.+ Mean.Sea.Level.Pressure.daily.min..MSL.+ Wind.Speed.daily.max..10.m.above.gnd.+Medium.Cloud.Cover.daily.max..mid.cld.lay., data=Data, family=binomial(link="logit"))
+
+summary(reg2)
+# Le modèle nous donne un AIC de 1329.8
+```
+
+
+
+
+choix du modèle par la fonction step
+La fonction step nous permettra de supprimer certaines variables qui n'ont pas une grande dans la régression
+```{r}
+G4<-step(reg)
+summary(G4)
+```
+
+
+
+```{r}
+#le modèle retenu par la fonction step, c'est le  modèle qui a l'AIC le plus faible.
+
+regstep<-glm(pluie.demain ~ X + Temperature.daily.mean..2.m.above.gnd. + 
+    Mean.Sea.Level.Pressure.daily.mean..MSL. + Snowfall.amount.raw.daily.sum..sfc. + 
+    Medium.Cloud.Cover.daily.mean..mid.cld.lay. + Wind.Speed.daily.mean..80.m.above.gnd. + 
+    Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb. + 
+    Temperature.daily.min..2.m.above.gnd. + Mean.Sea.Level.Pressure.daily.max..MSL. + 
+    Mean.Sea.Level.Pressure.daily.min..MSL. + Total.Cloud.Cover.daily.max..sfc. + 
+    Total.Cloud.Cover.daily.min..sfc. + Medium.Cloud.Cover.daily.max..mid.cld.lay. + 
+    Wind.Speed.daily.max..10.m.above.gnd. + Wind.Speed.daily.min..10.m.above.gnd. + 
+    Wind.Gust.daily.max..sfc.,data=Data, family=binomial(link="logit"))
+
+summary(regstep)
+
+# Avec ce modèle, obtient un AIC de 1283.3. En comparant avec l'AIC que j'avais obtenu manuellement (1329.8), on trouve que l'AIC de la fonction step est plus petit. Donc nous allons retenir le modèle fournit par la fonction step.
+```
+
+
+```{r}
+exp(1.489e-01)
+exp(4.822e-01)
+exp(1.086e-02)
+exp(-1.150e-01)
+exp(-2.628e-03)
+exp(4.565e-03)
+exp(-1.059e-01)
+exp(-2.423e-01)
+exp(-3.064e-01)
+exp(8.335e-03)
+exp(7.812e-03)
+exp(6.215e-03)
+exp(6.051e-02)
+exp(1.119e-01)
+exp(2.331e-02)
+# quand la temperature quotidienne moyenne, de la Pression moyenne au niveau de la mer moyenne quotidienne, de la Moyenne quotidienne de la couverture nuageuse moyenne..mid.cld.lay, la Direction du vent moyenne quotidienne 900.mb, la Couverture nuageuse totale quotidienne max.sfc., Couverture nuageuse totale quotidienne min.sfc., Nébulosité moyenne quotidienne max mid.cld.lay.., Vitesse du vent.quotidienne max 10.m.au-dessus de la terre,Vitesse du vent.quotidienne min 10.m.au-dessus de la terre, Rafale de vent quotidienne max.sfc. augmente d'une unité la probabilité qu'il pleut le lendemain est de 1.160557,1.619634, 1.010919, 0.8913661, 0.9973755, 0.9973755, 1.004575, 0.8995146,0.7848207, 0.7360921, 1.00837, 1.007843, 1.007843, 1.006234, 1.062378, 1.118401, 1.023584 et négativement pour les autres variables.
+
+
+```
+
+Modèle d'interaction
+```{r}
+# interactions entre la pression et la nébulosité
+regstep1<-glm(pluie.demain ~ X + Temperature.daily.mean..2.m.above.gnd. +  Temperature.daily.min..2.m.above.gnd.+
+               ( Mean.Sea.Level.Pressure.daily.mean..MSL.+ Mean.Sea.Level.Pressure.daily.max..MSL. + Mean.Sea.Level.Pressure.daily.min..MSL.)* (Medium.Cloud.Cover.daily.max..mid.cld.lay.+ Medium.Cloud.Cover.daily.mean..mid.cld.lay. )
+ + Snowfall.amount.raw.daily.sum..sfc. + Wind.Speed.daily.mean..80.m.above.gnd. +
+    Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb. + 
+     + Total.Cloud.Cover.daily.max..sfc. + Total.Cloud.Cover.daily.min..sfc.  + 
+    Wind.Speed.daily.max..10.m.above.gnd. + Wind.Speed.daily.min..10.m.above.gnd. + 
+    Wind.Gust.daily.max..sfc.,data=Data, family=binomial)
+
+summary(regstep1)
+#AIC: 1279.3
+```
+
+
+```{r}
+#interaction entre la vitesse et la direction du vent
+regstep2<-glm(pluie.demain ~ X + Temperature.daily.mean..2.m.above.gnd. + 
+    Mean.Sea.Level.Pressure.daily.mean..MSL. + Snowfall.amount.raw.daily.sum..sfc. + 
+    Medium.Cloud.Cover.daily.mean..mid.cld.lay. +( Wind.Speed.daily.mean..80.m.above.gnd. +Wind.Speed.daily.max..10.m.above.gnd. + Wind.Speed.daily.min..10.m.above.gnd.) *( 
+ Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb.) + 
+    Temperature.daily.min..2.m.above.gnd. + Mean.Sea.Level.Pressure.daily.max..MSL. + 
+    Mean.Sea.Level.Pressure.daily.min..MSL. + Total.Cloud.Cover.daily.max..sfc. + 
+    Total.Cloud.Cover.daily.min..sfc. + Medium.Cloud.Cover.daily.max..mid.cld.lay. + 
+     
+    Wind.Gust.daily.max..sfc.,data=Data, family=binomial)
+
+summary(regstep2)
+#AIC: 1282.3
+```
+
+Regardons la distribution des résidus. Ce qui nous permettra de savoir si on a besoin de transformer certaines variables
+```{r}
+par(mfrow = c(2,2))
+plot(regstep)
+```
+
+
+Regression probit
+```{r}
+Rprobit=glm(pluie.demain~ .,data= Data,family=binomial(link="probit"))
+summary(Rprobit)
+```
+
+modèle avec les variables significatives.
+```{r}
+Rprobit1=glm(pluie.demain~ Mean.Sea.Level.Pressure.daily.mean..MSL.+Wind.Direction.daily.mean..80.m.above.gnd.+Wind.Direction.daily.mean..900.mb.+Mean.Sea.Level.Pressure.daily.max..MSL.+Mean.Sea.Level.Pressure.daily.min..MSL.+ Medium.Cloud.Cover.daily.max..mid.cld.lay.+ Wind.Speed.daily.max..10.m.above.gnd.+ Wind.Speed.daily.min..10.m.above.gnd., data= Data,family=binomial(link="probit"))
+summary(Rprobit1)
+```
+
+
+```{r}
+regprobit=step(glm(pluie.demain~ .,data= Data,family=binomial(link="probit")))
+summary(regprobit)
+
+#AIC: 1287.3
+# Interpretation:
+```
+
+Modèle probit retenu par selection 
+```{r}
+glm( pluie.demain ~ X + Temperature.daily.mean..2.m.above.gnd. + 
+    Mean.Sea.Level.Pressure.daily.mean..MSL. + Snowfall.amount.raw.daily.sum..sfc. + 
+    Total.Cloud.Cover.daily.mean..sfc. + Wind.Speed.daily.mean..80.m.above.gnd. + 
+    Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb. + 
+    Temperature.daily.min..2.m.above.gnd. + Mean.Sea.Level.Pressure.daily.max..MSL. + 
+    Mean.Sea.Level.Pressure.daily.min..MSL. + Total.Cloud.Cover.daily.min..sfc. + 
+    High.Cloud.Cover.daily.max..high.cld.lay. + Medium.Cloud.Cover.daily.max..mid.cld.lay. + 
+    Low.Cloud.Cover.daily.max..low.cld.lay. + Wind.Speed.daily.max..10.m.above.gnd. + 
+    Wind.Speed.daily.min..10.m.above.gnd. + Wind.Gust.daily.max..sfc., 
+    family = binomial(link = "probit"), data = Data)
+```
+
+Regression probit avec le modèle obtenu manuellement
+```{r}
+gprobit = glm(pluie.demain ~ Mean.Sea.Level.Pressure.daily.mean..MSL.+ Wind.Direction.daily.mean..900.mb. +Mean.Sea.Level.Pressure.daily.max..MSL.+ Mean.Sea.Level.Pressure.daily.min..MSL.+ Wind.Speed.daily.max..10.m.above.gnd.+Medium.Cloud.Cover.daily.max..mid.cld.lay.,data=Data, family=binomial(link="probit"))
+
+summary(gprobit)
+# AIC = 1331.7
+#interpretation: 
+```
+
+
+
+
+regression multinorm avec les données choisit manuellement
+```{r}
+regmulti<-multinom(glm(pluie.demain ~ Mean.Sea.Level.Pressure.daily.mean..MSL.+ Wind.Direction.daily.mean..900.mb. +Mean.Sea.Level.Pressure.daily.max..MSL.+ Mean.Sea.Level.Pressure.daily.min..MSL.+ Wind.Speed.daily.max..10.m.above.gnd.+Medium.Cloud.Cover.daily.max..mid.cld.lay., data=Data))
+summary(regmulti)
+ #AIC = 1322.4
+```
+
+```{r}
+regdat=step(multinom(pluie.demain~ .,data= Data))
+summary(regdat)
+#AIC = 1283.294
+```
+
+
+
+
+Modèle de poisson avec le modèle choisit manuellement
+```{r}
+regpoisson<-glm(pluie.demain ~ Mean.Sea.Level.Pressure.daily.mean..MSL.+ Wind.Direction.daily.mean..900.mb. +Mean.Sea.Level.Pressure.daily.max..MSL.+ Mean.Sea.Level.Pressure.daily.min..MSL.+ Wind.Speed.daily.max..10.m.above.gnd.+Medium.Cloud.Cover.daily.max..mid.cld.lay., data=Data, family=poisson)
+
+summary(regpoisson)
+# AIC = 1875.9
+```
+
+
+
+Regression de poisson avec toutes les variables
+```{r}
+dat1=step(glm(pluie.demain~ .,data= Data,family=poisson))
+summary(dat1)
+#AIC: 1863.9
+```
+
+
+
+
+
+Régression ordinaire : utile quand l'ensemble prend des valeurs finies ordonnées.
+```{r}
+#la fonction avec laquelle nous travaillons est une fonction binaire qui prend la valeur TRUE ou FALSE. La regression ordinale n'est pas la plus appropriée pour pourvoir modeliser cette variable.
+```
+
+```{r}
+# Notre de critère de selection se base sur l'AIC. Nous allons choisir parmi nos différentes méthodes, le modèle qui a l'AIC le plus faible. Dans nos différents modèles on a la regression logistique qui a l'AIC le plus faible ( 1283,3).
+```
+
+
+
+
+Prediction
+
+chargement données test
+```{r}
+test<-read.csv("meteo.test.csv", header = TRUE,dec =".")
+#View(test)
+#summary(test)
+#dim(test)
+# ajout de la variable pluie.demain
+pluie.demain <- c(TRUE,FALSE)
+data_test <- cbind(test, pluie.demain)
+#View(data_test)
+```
+
+Prediction sur les données test
+
+```{r}
+# Modèle complet
+pred = predict(reg, newdata =data_test, type= "response")
+predRprobit = predict(Rprobit, newdata =data_test, type= "response")
+#Modèle par rétention des variables significatives
+predreg2 = predict(reg2, newdata =data_test, type= "response")
+predRprobit1 = predict(Rprobit1, newdata =data_test, type= "response")
+#Modèle par sélection basée sur l’AIC
+predregstep = predict(regstep, newdata =data_test, type= "response") 
+predregprobit = predict(regprobit, newdata =data_test, type= "response") 
+#predregdat = predict(regdat, newdata =data_test, type= "response")
+#preddat1 = predict(dat1, newdata =data_test, type= "response")
+#Modèles avec interactions
+predregstep1 = predict(regstep1, newdata =data_test, type= "response")
+predregstep2 = predict(regstep2, newdata =data_test, type= "response")
+```
+
+Erreur de prediction
+```{r}
+# Modèle complet
+mean(abs((pred>.5) - (data_test$pluie.demain== "TRUE")))
+mean(abs((predRprobit>.5 ) - (data_test$pluie.demain== "TRUE")))
+#Modèle par rétention des variables significatives
+mean(abs((predreg2>.5) - (data_test$pluie.demain== "TRUE")))
+mean(abs((predRprobit1>.5 ) - (data_test$pluie.demain== "TRUE")))
+#Modèle par sélection basée sur l’AIC
+mean(abs((predregstep>.5) - (data_test$pluie.demain== "TRUE")))
+mean(abs((predregprobit>.5 ) - (data_test$pluie.demain== "TRUE")))
+#Modèles avec interactions
+mean(abs((predregstep1>.5) - (data_test$pluie.demain== "TRUE")))
+mean(abs((predregstep2 >.5) - (data_test$pluie.demain== "TRUE")))
+```
+
+
+```{r}
+#on va retenir le modèle logit avec l'aic le plus faible 
+pred2 = (predregstep  >= 0.5)
+mean(abs(pred2 - (data_test$pluie.demain== "TRUE")))
+```
+
+
+```{r}
+table(pred2, data_test$pluie.demain)
+#on a 64 faux negatives et 84 faux positives
+```
+
+
+l'odd ratio
+estimer l’odds ratio associé à une variation de 2937 jours
+```{r}
+exp(2937 * coef(regstep)[2])
+# 1.665257 qui est supérieur à 1
+```
+
+`
+
+
+```{r}
+#Fonction de calcul du risque quadratique des predictions
+sqrtmse = function ( modele , data , col , type ="ns") {
+ifelse ( type =="ns", sqrt ( mean (( predict ( modele , data )- data [, col ])** 2)) ,
+sqrt ( mean (( predict ( modele , data , type = type ) - data [,col ])** 2 )))
+}
+
+sqrtmse(regstep ,test,46)
+```
+
+
+
+
+Détection du seuil optimal
+
+Supposons q'un faux négative est 2 fois pire qu'un faux positive.
+```{r}
+seuil = seq(0, 1, by=.01)
+ 
+res = rep(NA, length(seuil))
+for(i in 1:length(seuil)){
+  pred2 = (predregstep >= seuil[i])
+  res[i] = 1 * sum(pred2 & data_test$pluie.demain=="FALSE") + 
+    2 * sum(!pred2 & data_test$pluie.demain=="TRUE")
+}
+
+plot(seuil, res, type="l")
+system.time({
+  res = rep(NA, length(seuil))
+  for(i in 1:length(seuil)){
+    pred2 = (predregstep >= seuil[i])
+    res[i] = 1 * sum(pred2 & data_test$pluie.demain=="FALSE") + 
+      2 * sum(!pred2 & data_test$pluie.demain=="TRUE")
+  }
+})
+seuil[which.min(res)]
+
+cout = function(s){
+  pred2 = (predregstep >=s)
+  1 * sum(pred2 & data_test$pluie.demain=="FALSE") + 
+    2 * sum(!pred2 & data_test$pluie.demain=="TRUE")
+}
+cout(0)
+```
+
+calcul parallèle
+```{r}
+library(parallel)
+ncl = detectCores() - 1
+cl = makeCluster(ncl, type="FORK")
+clusterSetRNGStream(cl)
+system.time(sapply(seuil, cout))
+system.time(parSapply(cl, seuil, cout))
+```
+
+
+
+
+```{r}
+FP=TP= rep (NA,101)
+ plot (0:1,0:1,xlab="Taux de faux positifs",
+ylab="Taux de vrais positifs",cex=.5)
+for( s in seq (0,1, by =.01)){
+Ps=(predregstep>s)*1
+FP[1+ s *100]= sum((Ps==1)*(Data$pluie.demain==FALSE))/sum(Data$pluie.demain==FALSE)
+TP[1+ s *100]= sum ((Ps==1)*(Data$pluie.demain==TRUE))/sum(Data$pluie.demain==TRUE)
+}
+points ( c (FP), c (TP), type="s", col ="red")
+# le coût est minimal quand j'ai un seuil qui est à 0. on va traité les données pour qui le risque de pleuvoir est supérieure à 0
+```
+
+
+Evaluation de la performance des modèles
+
+Validation croisée entre le modèle logit et le modèle probit
+```{r}
+k = 10
+index = sample(1:k, nrow(Data), replace=TRUE)
+res.logit = rep(NA, k)
+res.probit = rep(NA, k)
+
+for(i in 1:k){
+  reglogit=glm(pluie.demain ~ X + Temperature.daily.mean..2.m.above.gnd. + 
+    Mean.Sea.Level.Pressure.daily.mean..MSL. + Snowfall.amount.raw.daily.sum..sfc. + 
+    Medium.Cloud.Cover.daily.mean..mid.cld.lay. + Wind.Speed.daily.mean..80.m.above.gnd. + 
+    Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb. + 
+    Temperature.daily.min..2.m.above.gnd. + Mean.Sea.Level.Pressure.daily.max..MSL. + 
+    Mean.Sea.Level.Pressure.daily.min..MSL. + Total.Cloud.Cover.daily.max..sfc. + 
+    Total.Cloud.Cover.daily.min..sfc. + Medium.Cloud.Cover.daily.max..mid.cld.lay. + 
+    Wind.Speed.daily.max..10.m.above.gnd. + Wind.Speed.daily.min..10.m.above.gnd. + 
+    Wind.Gust.daily.max..sfc.,family=binomial(link="logit"),
+    data = Data[index != i, ] )
+  
+  reg.probit = glm(pluie.demain ~ X + Temperature.daily.mean..2.m.above.gnd. + 
+    Mean.Sea.Level.Pressure.daily.mean..MSL. + Snowfall.amount.raw.daily.sum..sfc. + 
+    Total.Cloud.Cover.daily.mean..sfc. + Wind.Speed.daily.mean..80.m.above.gnd. + 
+    Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb. + 
+    Temperature.daily.min..2.m.above.gnd. + Mean.Sea.Level.Pressure.daily.max..MSL. + 
+    Mean.Sea.Level.Pressure.daily.min..MSL. + Total.Cloud.Cover.daily.min..sfc. + 
+    High.Cloud.Cover.daily.max..high.cld.lay. + Medium.Cloud.Cover.daily.max..mid.cld.lay. + 
+    Low.Cloud.Cover.daily.max..low.cld.lay. + Wind.Speed.daily.max..10.m.above.gnd. + 
+    Wind.Speed.daily.min..10.m.above.gnd. + Wind.Gust.daily.max..sfc.,family=binomial(link="logit"),
+    data = Data[index != i, ])
+  
+  pred.logit = predict(reglogit, newdata=Data[index == i, ],
+                            type="response")
+  pred.probit = predict(reg.probit, newdata=Data[index == i, ],
+                            type="response")
+  
+  res.logit[i] = mean(Data[index==i, "pluie.demain"] == (pred.logit >.5), na.rm = T)
+  res.probit[i] = mean(Data[index==i, "pluie.demain"] == (pred.probit >.5), na.rm = T)
+}
+
+mean(res.logit)
+mean(res.probit)
+```
+
+Fichier des prédictions
+```{r}
+# Créer un nouveau dataframe avec les prédictions
+predictions_df <- data.frame(predregstep)
+# Ajouter les prédictions au dataframe original
+test_data$predictions <- predictions
+# Enregistrer les prédictions dans un fichier CSV
+ 
+data_test$predictions <- predregstep
+
+print(data_test)
+
+write.csv(data_test, file = "C:/Users/Dieng/Desktop/Master Dauphine/Modèle lineaire généralisé/Projet/data.csv", row.names = FALSE)
+
+```
+
+
+
+
+
+
+
+
