@@ -29,7 +29,6 @@ Nous avons 47 variables et 1180 observations.
 ```{r}
 str(Data)
 dim(Data)
-#notre base de données comporte 47 variables avec 1180 observations.
 ```
 
 
@@ -41,17 +40,11 @@ Exploration détaillée des données
 ```{r}
 print(dfSummary(Data, valid.col = FALSE, graph.magnif = 0.75), 
       max.tbl.height = 300, method = "render")
-# on voit la base de données qui est constituée des différentes variables constituant les conditions meteorologiques et caractérisant les pluies. On trouve la base de données n'a pas de données manquantes.
+#On trouve la base de données n'a pas de données manquantes.
 ```
 
 
-On retrouve une certaine colinearité entre les variables. Ce qui confirme qu'i ya une colineraité entre eux.
 
-Hour et minute sont distribués de la même façon
-
-Low.Cloud.Cover.daily.min..low.cld.lay., Medium.Cloud.Cover.daily.min..mid.cld.lay., 	High.Cloud.Cover.daily.min..high.cld.lay, Total.Cloud.Cover.daily.min..sfc sont distribués de la même façon
-
-Wind.Speed.daily.min..900.mb., 	Wind.Gust.daily.min..sfc., Wind.Speed.daily.min..80.m.above.gnd., Wind.Speed.daily.min..10.m.above.gnd. semblent être distribués de la même manière.
 
 Vérification des 2 modalités de la variable à prédire
 ```{r}
@@ -93,12 +86,6 @@ corrplot(cor(cbind(Data[, 36:46], Data$pluie.demain == "TRUE")))
 ```{r}
 reg<-glm(pluie.demain ~., data=Data, family=binomial(link="logit"))
 summary(reg)
-# il ya un effet significative des variables avec des étoiles. on interprete avec l'estimate:
-#l'apparition des NA dans la regression.soit la matrice est de plein de rang, reflète une forte correlation lineaire entre ces variables ( et d'autres).
-
-#En faisant une regression avec toutes les variables, on retrouve les variables suivantes comme des variables(significatives) ayant une influence sur la variable à expliquer qui est la variable pluie de demain: Mean.Sea.Level.Pressure.daily.mean..MSL., Wind.Direction.daily.mean..900.mb., Mean.Sea.Level.Pressure.daily.max..MSL., Mean.Sea.Level.Pressure.daily.min..MSL., Wind.Speed.daily.min..10.m.above.gnd., Medium.Cloud.Cover.daily.max..mid.cld.lay.
-
-#D'autres n'étant pas significatives. On aperçoit des NA au niveau des variables Hour et Minute. Dans la suite, nous  allons faire la regression en excluant ces deux variables.
 ```
 
  On fait la regression en enlevant les variables Hour et Minute
@@ -147,7 +134,7 @@ summary(regstep)
 # Avec ce modèle, obtient un AIC de 1283.3. En comparant avec l'AIC que j'avais obtenu manuellement (1329.8), on trouve que l'AIC de la fonction step est plus petit. Donc nous allons retenir le modèle fournit par la fonction step.
 ```
 
-
+interprétation de la sortie de la regression
 ```{r}
 exp(1.489e-01)
 exp(4.822e-01)
@@ -226,7 +213,6 @@ regprobit=step(glm(pluie.demain~ .,data= Data,family=binomial(link="probit")))
 summary(regprobit)
 
 #AIC: 1287.3
-# Interpretation:
 ```
 
 Modèle probit retenu par selection 
@@ -248,8 +234,7 @@ Regression probit avec le modèle obtenu manuellement
 gprobit = glm(pluie.demain ~ Mean.Sea.Level.Pressure.daily.mean..MSL.+ Wind.Direction.daily.mean..900.mb. +Mean.Sea.Level.Pressure.daily.max..MSL.+ Mean.Sea.Level.Pressure.daily.min..MSL.+ Wind.Speed.daily.max..10.m.above.gnd.+Medium.Cloud.Cover.daily.max..mid.cld.lay.,data=Data, family=binomial(link="probit"))
 
 summary(gprobit)
-# AIC = 1331.7
-#interpretation: 
+# AIC = 1331.7 
 ```
 
 
